@@ -1,0 +1,24 @@
+{
+  "name": "Tech English Trainer",
+  "short_name": "TechEnglish",
+  "description": "技术英语记忆训练工具 - 用闪卡轻松掌握编程词汇",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7F6F2",
+  "theme_color": "#7A9586",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
