@@ -195,9 +195,9 @@ body {
   }
 }
 
-/* PWA standalone 模式下隐藏滚动条 */
+/* PWA standalone 模式下隐藏滚动条（仅主页闪卡视图） */
 @media (display-mode: standalone) {
   body {
-    overflow: hidden;
+    overflow-x: hidden;
   }
 }
