@@ -1,25 +1,31 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Check } from "lucide-react";
 import Flashcard from "@/components/Flashcard";
 import SearchBar from "@/components/SearchBar";
 import AddWordModal from "@/components/AddWordModal";
-import type { VocabularyRow } from "@/lib/supabase";
+import {
+  supabase,
+  calculateReview,
+  type VocabularyRow,
+  type ReviewRating,
+} from "@/lib/supabase";
 
 interface FlashcardDeckProps {
   words: VocabularyRow[];
+  initialIndex?: number;
 }
 
-export default function FlashcardDeck({ words: initialWords }: FlashcardDeckProps) {
-  /* 本地维护词汇列表，新增词可即时追加无需刷新页面 */
+export default function FlashcardDeck({ words: initialWords, initialIndex = 0 }: FlashcardDeckProps) {
   const [words, setWords] = useState(initialWords);
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [flipKey, setFlipKey] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
+  /* 入库成功反馈动画 */
+  const [showFeedback, setShowFeedback] = useState(false);
 
-  /* 实时关键词过滤：匹配 word、translation、tech_context */
   const filteredWords = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return words;
@@ -31,7 +37,6 @@ export default function FlashcardDeck({ words: initialWords }: FlashcardDeckProp
     );
   }, [words, searchQuery]);
 
-  /* 搜索变化时重置索引 */
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
     setCurrentIndex(0);
@@ -48,7 +53,6 @@ export default function FlashcardDeck({ words: initialWords }: FlashcardDeckProp
     setFlipKey((k) => k + 1);
   }, [filteredWords.length]);
 
-  /* 新词添加成功后追加到列表 */
   const handleWordAdded = useCallback((newWord: VocabularyRow) => {
     setWords((prev) => [...prev, newWord]);
     setSearchQuery("");
@@ -56,8 +60,60 @@ export default function FlashcardDeck({ words: initialWords }: FlashcardDeckProp
     setFlipKey((k) => k + 1);
   }, []);
 
+  /* 触发入库反馈动画 */
+  const triggerFeedback = useCallback(() => {
+    setShowFeedback(true);
+    setTimeout(() => setShowFeedback(false), 1200);
+  }, []);
+
+  /* 复习评分回调：计算新参数 → 更新 Supabase → 更新本地状态 → 切到下一张 */
+  const handleReview = useCallback(
+    async (rating: ReviewRating) => {
+      const word = filteredWords[currentIndex];
+      if (!word) return;
+
+      const update = calculateReview(rating, {
+        interval: word.interval ?? 0,
+        ease_factor: word.ease_factor ?? 2.5,
+        review_count: word.review_count ?? 0,
+      });
+
+      /* 乐观更新本地状态 */
+      setWords((prev) =>
+        prev.map((w) => (w.id === word.id ? { ...w, ...update } : w))
+      );
+
+      triggerFeedback();
+
+      /* 切到下一张 */
+      if (filteredWords.length > 1) {
+        setCurrentIndex((i) =>
+          i < filteredWords.length - 1 ? i : 0
+        );
+      }
+      setFlipKey((k) => k + 1);
+
+      /* 异步写入数据库 */
+      await supabase
+        .from("vocabulary")
+        .update(update)
+        .eq("id", word.id);
+    },
+    [filteredWords, currentIndex, triggerFeedback]
+  );
+
   return (
     <>
+      {/* 入库成功反馈 */}
+      {showFeedback && (
+        <div className="review-feedback">
+          <div className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#7A9586] text-white text-sm shadow-lg">
+            <Check className="w-4 h-4" />
+            已记录
+          </div>
+        </div>
+      )}
+
       {/* 搜索栏 + 添加按钮 */}
       <div className="w-full max-w-md flex items-center gap-3 mb-8">
         <SearchBar value={searchQuery} onChange={handleSearchChange} />
@@ -93,11 +149,11 @@ export default function FlashcardDeck({ words: initialWords }: FlashcardDeckProp
               data={filteredWords[currentIndex]}
               onSwipeLeft={goNext}
               onSwipeRight={goPrev}
+              onReview={handleReview}
             />
           </div>
 
-          {/* 导航按钮 + 进度指示 */}
-          <div className="mt-10 mb-6 sm:mt-14 sm:mb-0 flex items-center gap-6 sm:gap-8">
+          <div className="mt-8 mb-6 sm:mt-12 sm:mb-0 flex items-center gap-6 sm:gap-8">
             <button
               onClick={goPrev}
               className="flex items-center justify-center w-12 h-12 rounded-full bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition-all hover:shadow-[0_4px_18px_rgba(0,0,0,0.1)] active:scale-90 active:bg-[#F7F6F2]"
@@ -121,11 +177,11 @@ export default function FlashcardDeck({ words: initialWords }: FlashcardDeckProp
         </>
       )}
 
-      {/* 添加新词弹窗 */}
       <AddWordModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onWordAdded={handleWordAdded}
+        existingWords={words}
       />
     </>
   );

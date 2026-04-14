@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { X, Sparkles, Loader2, AlertCircle } from "lucide-react";
 import { supabase, type VocabularyRow } from "@/lib/supabase";
 
@@ -8,12 +8,14 @@ interface AddWordModalProps {
   open: boolean;
   onClose: () => void;
   onWordAdded: (word: VocabularyRow) => void;
+  existingWords: VocabularyRow[];
 }
 
 export default function AddWordModal({
   open,
   onClose,
   onWordAdded,
+  existingWords,
 }: AddWordModalProps) {
   const [word, setWord] = useState("");
   const [phonetic, setPhonetic] = useState("");
@@ -25,7 +27,18 @@ export default function AddWordModal({
   const [generated, setGenerated] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  /* 关闭时重置所有状态 */
+  /* 构建已有单词的小写 Set，用于 O(1) 查重 */
+  const existingWordSet = useMemo(
+    () => new Set(existingWords.map((w) => w.word.toLowerCase().trim())),
+    [existingWords]
+  );
+
+  /* 实时判断当前输入是否重复 */
+  const isDuplicate = useMemo(() => {
+    const trimmed = word.trim().toLowerCase();
+    return trimmed.length > 0 && existingWordSet.has(trimmed);
+  }, [word, existingWordSet]);
+
   useEffect(() => {
     if (!open) {
       setWord("");
@@ -40,16 +53,14 @@ export default function AddWordModal({
     }
   }, [open]);
 
-  /* 错误提示 3 秒后自动消失 */
   useEffect(() => {
     if (!errorMsg) return;
     const timer = setTimeout(() => setErrorMsg(""), 4000);
     return () => clearTimeout(timer);
   }, [errorMsg]);
 
-  /* 调用后端 /api/generate 获取 AI 生成内容 */
   const handleGenerate = useCallback(async () => {
-    if (!word.trim()) return;
+    if (!word.trim() || isDuplicate) return;
     setIsGenerating(true);
     setGenerated(false);
     setErrorMsg("");
@@ -78,9 +89,8 @@ export default function AddWordModal({
     } finally {
       setIsGenerating(false);
     }
-  }, [word]);
+  }, [word, isDuplicate]);
 
-  /* 保存到 Supabase */
   const handleSave = useCallback(async () => {
     if (!word.trim() || !generated) return;
     setIsSaving(true);
@@ -101,7 +111,14 @@ export default function AddWordModal({
     setIsSaving(false);
 
     if (error) {
-      setErrorMsg("保存失败，请重试");
+      /* 捕获 Supabase UNIQUE 约束冲突（PostgreSQL error code 23505） */
+      const isUniqueViolation =
+        error.code === "23505" || error.message?.includes("duplicate");
+      setErrorMsg(
+        isUniqueViolation
+          ? "该单词已存在于词库中，无法重复添加"
+          : "保存失败，请重试"
+      );
       return;
     }
 
@@ -115,6 +132,9 @@ export default function AddWordModal({
 
   const inputClass =
     "w-full px-4 py-2.5 rounded-xl bg-[#F7F6F2] border border-[#E8E6E0] text-sm text-[#333] placeholder:text-[#C5C2BA] outline-none transition-all focus:border-[#7A9586] focus:shadow-[0_0_0_3px_rgba(122,149,134,0.1)]";
+
+  /* AI 生成按钮是否禁用 */
+  const generateDisabled = !word.trim() || isDuplicate || isGenerating;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -143,20 +163,20 @@ export default function AddWordModal({
         )}
 
         {/* 单词输入 + AI 生成按钮 */}
-        <div className="flex gap-3 mb-5">
+        <div className="flex gap-3 mb-1">
           <input
             type="text"
             value={word}
             onChange={(e) => setWord(e.target.value)}
             placeholder="输入英文单词"
-            className={`${inputClass} flex-1`}
-            onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+            className={`${inputClass} flex-1 ${isDuplicate ? "border-[#D4A9A3] focus:border-[#D4A9A3] focus:shadow-[0_0_0_3px_rgba(212,169,163,0.15)]" : ""}`}
+            onKeyDown={(e) => e.key === "Enter" && !generateDisabled && handleGenerate()}
             disabled={isGenerating}
           />
           <button
             onClick={handleGenerate}
-            disabled={!word.trim() || isGenerating}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#7A9586] text-white text-sm font-medium transition-all hover:bg-[#6B8575] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            disabled={generateDisabled}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#7A9586] text-white text-sm font-medium transition-all duration-300 hover:bg-[#6B8575] active:scale-95 disabled:bg-[#C5C2BA] disabled:cursor-not-allowed whitespace-nowrap"
           >
             {isGenerating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -166,6 +186,18 @@ export default function AddWordModal({
             AI 生成
           </button>
         </div>
+
+        {/* 重复词警示 — 平滑淡入淡出 */}
+        <div
+          className={`overflow-hidden transition-all duration-300 ${isDuplicate ? "max-h-8 opacity-100 mb-4" : "max-h-0 opacity-0 mb-0"}`}
+        >
+          <p className="text-xs text-[#C4867A] mt-1.5 pl-1">
+            词库中已有此词，请勿重复录入
+          </p>
+        </div>
+
+        {/* 无重复时的正常间距 */}
+        {!isDuplicate && <div className="mb-4" />}
 
         {/* AI 生成中的状态 */}
         {isGenerating && (
