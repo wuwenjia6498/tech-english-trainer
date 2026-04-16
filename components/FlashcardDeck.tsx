@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Plus, Check } from "lucide-react";
 import Flashcard from "@/components/Flashcard";
 import SearchBar from "@/components/SearchBar";
@@ -23,8 +23,37 @@ export default function FlashcardDeck({ words: initialWords, initialIndex = 0 }:
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [flipKey, setFlipKey] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
-  /* 入库成功反馈动画 */
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showJumper, setShowJumper] = useState(false);
+  const [jumpValue, setJumpValue] = useState(currentIndex);
+  const jumperRef = useRef<HTMLDivElement>(null);
+
+  /* 点击外部关闭跳转器 */
+  useEffect(() => {
+    if (!showJumper) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (jumperRef.current && !jumperRef.current.contains(e.target as Node)) {
+        setShowJumper(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showJumper]);
+
+  /* 打开跳转器时同步当前索引 */
+  const openJumper = useCallback(() => {
+    setJumpValue(currentIndex);
+    setShowJumper(true);
+  }, [currentIndex]);
+
+  const handleJump = useCallback(
+    (idx: number) => {
+      setCurrentIndex(idx);
+      setFlipKey((k) => k + 1);
+      setShowJumper(false);
+    },
+    []
+  );
 
   const filteredWords = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -153,26 +182,65 @@ export default function FlashcardDeck({ words: initialWords, initialIndex = 0 }:
             />
           </div>
 
-          <div className="mt-8 mb-6 sm:mt-12 sm:mb-0 flex items-center gap-6 sm:gap-8">
-            <button
-              onClick={goPrev}
-              className="flex items-center justify-center w-12 h-12 rounded-full bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition-all hover:shadow-[0_4px_18px_rgba(0,0,0,0.1)] active:scale-90 active:bg-[#F7F6F2]"
-              aria-label="上一个"
-            >
-              <ChevronLeft className="w-5 h-5 text-[#7A9586]" />
-            </button>
+          <div className="mt-8 mb-6 sm:mt-12 sm:mb-0 flex flex-col items-center gap-3">
+            <div className="flex items-center gap-6 sm:gap-8">
+              <button
+                onClick={goPrev}
+                className="flex items-center justify-center w-12 h-12 rounded-full bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition-all hover:shadow-[0_4px_18px_rgba(0,0,0,0.1)] active:scale-90 active:bg-[#F7F6F2]"
+                aria-label="上一个"
+              >
+                <ChevronLeft className="w-5 h-5 text-[#7A9586]" />
+              </button>
 
-            <span className="text-sm text-[#B0ADA6] tabular-nums min-w-[3rem] text-center">
-              {currentIndex + 1} / {filteredWords.length}
-            </span>
+              {/* 进度指示 — 点击打开跳转器 */}
+              <button
+                onClick={openJumper}
+                className="text-sm text-[#B0ADA6] tabular-nums min-w-[3rem] text-center hover:text-[#7A9586] transition-colors active:scale-95"
+              >
+                {currentIndex + 1} / {filteredWords.length}
+              </button>
 
-            <button
-              onClick={goNext}
-              className="flex items-center justify-center w-12 h-12 rounded-full bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition-all hover:shadow-[0_4px_18px_rgba(0,0,0,0.1)] active:scale-90 active:bg-[#F7F6F2]"
-              aria-label="下一个"
-            >
-              <ChevronRight className="w-5 h-5 text-[#7A9586]" />
-            </button>
+              <button
+                onClick={goNext}
+                className="flex items-center justify-center w-12 h-12 rounded-full bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition-all hover:shadow-[0_4px_18px_rgba(0,0,0,0.1)] active:scale-90 active:bg-[#F7F6F2]"
+                aria-label="下一个"
+              >
+                <ChevronRight className="w-5 h-5 text-[#7A9586]" />
+              </button>
+            </div>
+
+            {/* 页码跳转器 */}
+            {showJumper && (
+              <div
+                ref={jumperRef}
+                className="flex flex-col items-center gap-2.5 px-5 py-4 rounded-2xl bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] animate-[fadeIn_0.2s_ease-out]"
+              >
+                <input
+                  type="range"
+                  min={0}
+                  max={filteredWords.length - 1}
+                  value={jumpValue}
+                  onChange={(e) => setJumpValue(Number(e.target.value))}
+                  className="w-48 sm:w-56 accent-[#7A9586] h-1.5 cursor-pointer"
+                />
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-[#B0ADA6] tabular-nums w-20 text-center">
+                    第 {jumpValue + 1} / {filteredWords.length} 词
+                  </span>
+                  <button
+                    onClick={() => handleJump(jumpValue)}
+                    className="px-4 py-1.5 rounded-xl bg-[#7A9586] text-white text-xs font-medium transition-all hover:bg-[#6B8575] active:scale-95"
+                  >
+                    跳转
+                  </button>
+                </div>
+                {filteredWords[jumpValue] && (
+                  <p className="text-[11px] text-[#C5C2BA] truncate max-w-[14rem]">
+                    {filteredWords[jumpValue].word} — {filteredWords[jumpValue].translation}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </>
       )}
