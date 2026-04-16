@@ -19,6 +19,7 @@ export default function AddWordModal({
 }: AddWordModalProps) {
   const [word, setWord] = useState("");
   const [phonetic, setPhonetic] = useState("");
+  const [category, setCategory] = useState("");
   const [translation, setTranslation] = useState("");
   const [techContext, setTechContext] = useState("");
   const [codeExample, setCodeExample] = useState("");
@@ -43,6 +44,7 @@ export default function AddWordModal({
     if (!open) {
       setWord("");
       setPhonetic("");
+      setCategory("");
       setTranslation("");
       setTechContext("");
       setCodeExample("");
@@ -80,6 +82,7 @@ export default function AddWordModal({
       }
 
       setPhonetic(data.phonetic);
+      setCategory(data.category || "");
       setTranslation(data.translation);
       setTechContext(data.tech_context);
       setCodeExample(data.code_example);
@@ -101,6 +104,7 @@ export default function AddWordModal({
       .insert({
         word: word.trim(),
         phonetic,
+        category,
         translation,
         tech_context: techContext,
         code_example: codeExample,
@@ -126,7 +130,7 @@ export default function AddWordModal({
       onWordAdded(data as VocabularyRow);
       onClose();
     }
-  }, [word, phonetic, translation, techContext, codeExample, generated, onWordAdded, onClose]);
+  }, [word, phonetic, category, translation, techContext, codeExample, generated, onWordAdded, onClose]);
 
   if (!open) return null;
 
@@ -210,14 +214,25 @@ export default function AddWordModal({
         {/* 生成完成后显示可编辑的字段 */}
         {generated && !isGenerating && (
           <div className="space-y-3 mb-6">
-            <div>
-              <label className="block text-xs text-[#B0ADA6] mb-1.5">音标</label>
-              <input
-                type="text"
-                value={phonetic}
-                onChange={(e) => setPhonetic(e.target.value)}
-                className={inputClass}
-              />
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-xs text-[#B0ADA6] mb-1.5">音标</label>
+                <input
+                  type="text"
+                  value={phonetic}
+                  onChange={(e) => setPhonetic(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-[#B0ADA6] mb-1.5">分类</label>
+                <input
+                  type="text"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
             </div>
             <div>
               <label className="block text-xs text-[#B0ADA6] mb-1.5">中文释义</label>

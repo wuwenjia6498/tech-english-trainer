@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { ChevronLeft } from "lucide-react";
+import { useState, useMemo, useCallback } from "react";
+import { ChevronLeft, Pencil } from "lucide-react";
 import Link from "next/link";
+import EditWordModal from "@/components/EditWordModal";
 import type { VocabularyRow } from "@/lib/supabase";
 
 type FilterTab = "all" | "due" | "mastered" | "hard";
@@ -18,7 +19,6 @@ interface ManageListProps {
   words: VocabularyRow[];
 }
 
-/* 根据 interval 天数生成人类可读的间隔描述 */
 function formatInterval(interval: number): string {
   if (!interval || interval === 0) return "新词";
   if (interval < 1) return "< 1天";
@@ -26,7 +26,6 @@ function formatInterval(interval: number): string {
   return `${Math.round(interval)}天`;
 }
 
-/* 判断单词的状态标签 */
 function getStatusInfo(word: VocabularyRow): {
   text: string;
   color: string;
@@ -43,8 +42,10 @@ function getStatusInfo(word: VocabularyRow): {
   return { text: `间隔: ${formatInterval(word.interval)}`, color: "text-[#B0ADA6]", bgColor: "bg-[#F2F1ED]" };
 }
 
-export default function ManageList({ words }: ManageListProps) {
+export default function ManageList({ words: initialWords }: ManageListProps) {
+  const [words, setWords] = useState(initialWords);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
+  const [editingWord, setEditingWord] = useState<VocabularyRow | null>(null);
 
   const now = useMemo(() => new Date().toISOString(), []);
 
@@ -61,7 +62,6 @@ export default function ManageList({ words }: ManageListProps) {
     }
   }, [words, activeTab, now]);
 
-  /* 各 Tab 对应数量 */
   const counts = useMemo(
     () => ({
       all: words.length,
@@ -72,9 +72,16 @@ export default function ManageList({ words }: ManageListProps) {
     [words, now]
   );
 
+  const handleUpdated = useCallback((updated: VocabularyRow) => {
+    setWords((prev) => prev.map((w) => (w.id === updated.id ? updated : w)));
+  }, []);
+
+  const handleDeleted = useCallback((id: number) => {
+    setWords((prev) => prev.filter((w) => w.id !== id));
+  }, []);
+
   return (
     <>
-      {/* 顶部导航栏 — 固定在顶部 */}
       <header className="sticky top-0 z-10 bg-[#F7F6F2]/90 backdrop-blur-md border-b border-[#E8E6E0]/60">
         <div className="flex items-center gap-3 px-4 py-3 max-w-2xl mx-auto">
           <Link
@@ -90,7 +97,6 @@ export default function ManageList({ words }: ManageListProps) {
           </span>
         </div>
 
-        {/* 筛选标签栏 */}
         <div className="flex gap-1 px-4 pb-3 max-w-2xl mx-auto overflow-x-auto scrollbar-none">
           {TABS.map(({ key, label }) => (
             <button
@@ -115,7 +121,6 @@ export default function ManageList({ words }: ManageListProps) {
         </div>
       </header>
 
-      {/* 词汇列表 */}
       <div className="flex-1 overflow-y-auto scroll-smooth">
         <div className="max-w-2xl mx-auto px-4 py-3">
           {filteredWords.length === 0 ? (
@@ -128,12 +133,12 @@ export default function ManageList({ words }: ManageListProps) {
               {filteredWords.map((word) => {
                 const status = getStatusInfo(word);
                 return (
-                  <li key={word.id}>
+                  <li key={word.id} className="flex items-center gap-1.5">
+                    {/* 词汇信息 — 点击跳转闪卡 */}
                     <Link
                       href={`/?word=${encodeURIComponent(word.word)}`}
-                      className="flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 hover:bg-white/70 active:scale-[0.98] active:bg-white"
+                      className="flex-1 min-w-0 flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-200 hover:bg-white/70 active:scale-[0.98] active:bg-white"
                     >
-                      {/* 左侧：单词 + 音标 */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-2">
                           <span className="text-[15px] font-semibold text-[#333] truncate">
@@ -148,13 +153,21 @@ export default function ManageList({ words }: ManageListProps) {
                         </p>
                       </div>
 
-                      {/* 右侧：状态标签 */}
                       <span
                         className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-medium ${status.color} ${status.bgColor}`}
                       >
                         {status.text}
                       </span>
                     </Link>
+
+                    {/* 编辑按钮 */}
+                    <button
+                      onClick={() => setEditingWord(word)}
+                      className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/70 transition-colors active:scale-90"
+                      aria-label={`编辑 ${word.word}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-[#C5C2BA]" />
+                    </button>
                   </li>
                 );
               })}
@@ -162,6 +175,14 @@ export default function ManageList({ words }: ManageListProps) {
           )}
         </div>
       </div>
+
+      <EditWordModal
+        open={!!editingWord}
+        word={editingWord}
+        onClose={() => setEditingWord(null)}
+        onUpdated={handleUpdated}
+        onDeleted={handleDeleted}
+      />
     </>
   );
 }
